@@ -48,7 +48,7 @@ for site in IG.aggregates():
 
     ovs = IGX.XenVM("ovs")
     ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
-    ovs.addService(PG.Execute(shell="sh", command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo sh /local/geni-install-files/create-ovs-br0.sh"))
+    ovs.addService(PG.Execute(shell="sh", command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh"))
     ovs.addService(PG.Execute(shell="sh", command ="sudo /local/install-script-wireshark.sh"))
     ovs.addService(PG.Install(path="/local", url = "http://www.gpolab.bbn.com/experiment-support/OpenFlowOVS/wireshark.tar.gz"))
     ovs.component_manager_id = cmid
