@@ -17,11 +17,8 @@ import localcontext
 context = localcontext.buildContext()
 
 SLICE = "python-geni-lib"
-NETMASK = "255.255.255.0"
-HOST_IPS = ["10.10.1.1", "10.10.1.2", "10.10.1.3"]
-OVS_IPS = ["10.10.1.11", "10.10.1.12", "10.10.1.13"]
-CTRL_TO_OVS_IPS = ["11.1.1.1"]
-OVS_TO_CTRL_IPS = ["11.1.1.2"]
+CTRLMASK = "255.255.255.252"
+NETMASK = "255.255.0.0"
 WHITELIST = set([IG.GATech])
 
 for site in IG.aggregates():
@@ -29,7 +26,7 @@ for site in IG.aggregates():
         continue
 
     print site.name
-    geni.util.deleteSliverExists(site, context, SLICE)
+    #geni.util.deleteSliverExists(site, context, SLICE)
 
     if argnum > 1 and args[1] == 'c':
         break
@@ -43,49 +40,71 @@ for site in IG.aggregates():
     cmid = ad.nodes[0].component_manager_id
 
     r = PG.Request()
-    num_hosts = 3
-    ovs_intfs = []
 
-    ovs = IGX.XenVM("ovs")
-    ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
-    ovs.addService(PG.Execute(shell="sh", command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh"))
-    ovs.addService(PG.Execute(shell="sh", command ="sudo /local/install-script-wireshark.sh"))
-    ovs.addService(PG.Install(path="/local", url = "http://www.gpolab.bbn.com/experiment-support/OpenFlowOVS/wireshark.tar.gz"))
-    ovs.component_manager_id = cmid
-    for idx in xrange(0,num_hosts):
-        intf = ovs.addInterface("if%d" % (idx))
-        intf.addAddress(PG.IPv4Address(OVS_IPS[idx], NETMASK))
-        ovs_intfs.append(intf)
-    ovs_to_ctrl_intf = ovs.addInterface("if%d" % (num_hosts))
-    ovs_to_ctrl_intf.addAddress(PG.IPv4Address(OVS_TO_CTRL_IPS[0], NETMASK))
-    r.addResource(ovs)
-
-    for ct in xrange(0,num_hosts):
-        vzc = IGX.XenVM("host%d" % (ct+1))
-        vzc.component_manager_id = cmid
-        intf = vzc.addInterface("if0")
-        intf.addAddress(PG.IPv4Address(HOST_IPS[ct], NETMASK))
-        r.addResource(vzc)
-        link = PG.LAN()
-        link.addInterface(intf)
-        link.addInterface(ovs_intfs[ct])
-        link.vlan_tagging = True
-        r.addResource(link)
-
+    # Create the controller
     ctrl = IGX.XenVM("ctrl")
     ctrl.addService(PG.Execute(shell="sh",
                               command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo sh /local/geni-install-files/prep-and-run-ryu.sh"))
     ctrl.component_manager_id = cmid
-    ctrl_to_ovs_intf = ctrl.addInterface("if0")
-    ctrl_to_ovs_intf.addAddress(PG.IPv4Address(CTRL_TO_OVS_IPS[0], NETMASK))
     r.addResource(ctrl)
-    ctrl_link = PG.LAN()
-    ctrl_link.addInterface(ovs_to_ctrl_intf)
-    ctrl_link.addInterface(ctrl_to_ovs_intf)
-    ctrl_link.vlan_tagging = True
-    r.addResource(ctrl_link)
+
+    num_hosts = 1
+    num_switches = 4
+    all_ovs = []
+    for i in xrange(0, num_switches):
+        ovs_intfs = []
+
+        # Create the OVS switch
+        ovs = IGX.XenVM("ovs%d" % (i+1))
+        ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
+        ovs.addService(PG.Execute(shell="sh",
+                                  command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh %d" % (4*i+2)))
+        ovs.component_manager_id = cmid
+        for idx in xrange(0,num_hosts):
+            intf = ovs.addInterface()
+            intf.addAddress(PG.IPv4Address("12.10.%d.%d" % (i,idx+1), NETMASK))
+            ovs_intfs.append(intf)
+        ovs_to_ctrl_intf = ovs.addInterface()
+        ovs_to_ctrl_intf.addAddress(PG.IPv4Address("11.1.1.%d" % (4*i+1), CTRLMASK))
+        r.addResource(ovs)
+
+        # Create interface for controller to switch
+        ctrl_to_ovs_intf = ctrl.addInterface()
+        ctrl_to_ovs_intf.addAddress(PG.IPv4Address("11.1.1.%d" % (4*i+2), CTRLMASK))
+        ctrl_link = PG.LAN()
+        ctrl_link.addInterface(ctrl_to_ovs_intf)
+        ctrl_link.addInterface(ovs_to_ctrl_intf)
+        ctrl_link.vlan_tagging = True
+        r.addResource(ctrl_link)
+
+        # Create hosts and connect them to switch
+        for ct in xrange(0,num_hosts):
+            vzc = IGX.XenVM("host%d%d" % (i+1,ct+1))
+            vzc.addService(PG.Execute(shell="bash",
+                                      command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/install-iperf.sh"))
+            vzc.component_manager_id = cmid
+            intf = vzc.addInterface()
+            intf.addAddress(PG.IPv4Address("10.10.%d.%d" % (i,ct+1), NETMASK))
+            r.addResource(vzc)
+            link = PG.LAN()
+            link.addInterface(intf)
+            link.addInterface(ovs_intfs[ct])
+            link.vlan_tagging = True
+            r.addResource(link)
+        all_ovs.append(ovs)
+
+    # Connect the switches in a single line
+    for i in xrange(1,num_switches):
+        intf1 = all_ovs[i-1].addInterface()
+        intf1.addAddress(PG.IPv4Address("12.10.%d.%d" % (num_switches, 2*i+1), NETMASK))
+        intf2 = all_ovs[i].addInterface()
+        intf2.addAddress(PG.IPv4Address("12.10.%d.%d" % (num_switches, 2*i+2), NETMASK))
+        link = PG.LAN()
+        link.addInterface(intf1)
+        link.addInterface(intf2)
+        link.vlan_tagging = True
+        r.addResource(link)
 
     r.writeXML("ovs-%s.rspec" % (site.name))
-    m = site.createsliver(context, SLICE, r)
-
-    geni.util.printlogininfo(manifest=m)
+    #m = site.createsliver(context, SLICE, r)
+    #geni.util.printlogininfo(manifest=m)
