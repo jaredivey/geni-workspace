@@ -49,6 +49,7 @@ for site in IG.aggregates():
     r.addResource(ctrl)
 
     num_hosts = 1
+    num_links = 4
     num_switches = 4
     all_ovs = []
     for i in xrange(0, num_switches):
@@ -60,7 +61,7 @@ for site in IG.aggregates():
         ovs.addService(PG.Execute(shell="sh",
                                   command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh %d" % (4*i+2)))
         ovs.component_manager_id = cmid
-        for idx in xrange(0,num_hosts):
+        for idx in xrange(0,num_hosts*num_links):
             intf = ovs.addInterface()
             intf.addAddress(PG.IPv4Address("12.10.%d.%d" % (i,idx+1), NETMASK))
             ovs_intfs.append(intf)
@@ -80,17 +81,26 @@ for site in IG.aggregates():
         # Create hosts and connect them to switch
         for ct in xrange(0,num_hosts):
             vzc = IGX.XenVM("host%d%d" % (i+1,ct+1))
-            vzc.addService(PG.Execute(shell="bash",
-                                      command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/install-iperf.sh"))
             vzc.component_manager_id = cmid
-            intf = vzc.addInterface()
-            intf.addAddress(PG.IPv4Address("10.10.%d.%d" % (i,ct+1), NETMASK))
+            vzc.addService(PG.Execute(shell="sh",
+                                      command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files"))
+            intfs = []
+            for j in xrange(0,num_links):
+                hostaddr = "10.10.%d.%d" % (i,ct*num_links+j+1)
+                vzc.addService(PG.Execute(shell="sh",
+                                          command ="sudo bash /local/geni-install-files/install-iperf.sh %d %d" % (i,ct*num_links+j+1)))
+                intf = vzc.addInterface()
+                intf.addAddress(PG.IPv4Address(hostaddr, NETMASK))
+                intfs.append(intf)
+
             r.addResource(vzc)
-            link = PG.LAN()
-            link.addInterface(intf)
-            link.addInterface(ovs_intfs[ct])
-            link.vlan_tagging = True
-            r.addResource(link)
+
+            for j in xrange(0,num_links):
+                link = PG.LAN()
+                link.addInterface(intfs[j])
+                link.addInterface(ovs_intfs[ct*num_links+j])
+                link.vlan_tagging = True
+                r.addResource(link)
         all_ovs.append(ovs)
 
     # Connect the switches in a single line
