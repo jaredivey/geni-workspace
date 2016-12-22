@@ -21,6 +21,67 @@ CTRLMASK = "255.255.255.252"
 NETMASK = "255.255.0.0"
 WHITELIST = set([IG.GATech])
 
+def createRyuController(name, cmid):
+    ctrl = IGX.XenVM(name)
+    ctrl.addService(PG.Execute(shell="sh",
+                              command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo sh /local/geni-install-files/prep-and-run-ryu.sh"))
+    ctrl.component_manager_id = cmid
+    return ctrl
+
+def createOvsSwitch(name, cmid, index):
+    ovs = IGX.XenVM(name)
+    ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
+    ovs.addService(PG.Execute(shell="sh",
+                              command="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh %d" % (4*index+2)))
+    ovs.component_manager_id = cmid
+    return ovs
+
+def createCtrlLink(ctrl, ovs, index):
+    ovs_to_ctrl_intf = ovs.addInterface()
+    ovs_to_ctrl_intf.addAddress(PG.IPv4Address("11.1.1.%d" % (4 * index + 1), CTRLMASK))
+
+    # Create interface for controller to switch
+    ctrl_to_ovs_intf = ctrl.addInterface()
+    ctrl_to_ovs_intf.addAddress(PG.IPv4Address("11.1.1.%d" % (4 * index + 2), CTRLMASK))
+    ctrl_link = PG.LAN()
+    ctrl_link.addInterface(ctrl_to_ovs_intf)
+    ctrl_link.addInterface(ovs_to_ctrl_intf)
+    ctrl_link.vlan_tagging = True
+    return ctrl_link
+
+def createHost (name, cmid):
+    vzc = IGX.XenVM(name)
+    vzc.component_manager_id = cmid
+    vzc.addService(PG.Execute(shell="sh",
+                              command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files"))
+    return vzc
+
+def createOvs2HostLink(ovs, host, index, i):
+    ovs_intf = ovs.addInterface()
+    ovs_intf.addAddress(PG.IPv4Address("12.10.%d.%d" % (index,i), NETMASK))
+
+    host.addService(PG.Execute(shell="sh",
+                              command="sudo bash /local/geni-install-files/install-iperf.sh %d %d" % (index, i)))
+    host_intf = host.addInterface()
+    host_intf.addAddress(PG.IPv4Address("10.10.%d.%d" % (index, i), NETMASK))
+
+    link = PG.LAN()
+    link.addInterface(ovs_intf)
+    link.addInterface(host_intf)
+    link.vlan_tagging = True
+    return link
+
+def createOvs2OvsLink(ovs1, ovs2, subnet, index):
+    intf1 = ovs1.addInterface()
+    intf1.addAddress(PG.IPv4Address("12.10.%d.%d" % (subnet, 2*index+1), NETMASK))
+    intf2 = ovs2.addInterface()
+    intf2.addAddress(PG.IPv4Address("12.10.%d.%d" % (subnet, 2*index+2), NETMASK))
+    link = PG.LAN()
+    link.addInterface(intf1)
+    link.addInterface(intf2)
+    link.vlan_tagging = True
+    return link
+
 for site in IG.aggregates():
     if site not in WHITELIST:
         continue
@@ -42,10 +103,7 @@ for site in IG.aggregates():
     r = PG.Request()
 
     # Create the controller
-    ctrl = IGX.XenVM("ctrl")
-    ctrl.addService(PG.Execute(shell="sh",
-                              command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo sh /local/geni-install-files/prep-and-run-ryu.sh"))
-    ctrl.component_manager_id = cmid
+    ctrl = createRyuController("ctrl", cmid)
     r.addResource(ctrl)
 
     num_hosts = 1
@@ -53,67 +111,24 @@ for site in IG.aggregates():
     num_switches = 4
     all_ovs = []
     for i in xrange(0, num_switches):
-        ovs_intfs = []
-
         # Create the OVS switch
-        ovs = IGX.XenVM("ovs%d" % (i+1))
-        ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
-        ovs.addService(PG.Execute(shell="sh",
-                                  command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh %d" % (4*i+2)))
-        ovs.component_manager_id = cmid
-        for idx in xrange(0,num_hosts*num_links):
-            intf = ovs.addInterface()
-            intf.addAddress(PG.IPv4Address("12.10.%d.%d" % (i,idx+1), NETMASK))
-            ovs_intfs.append(intf)
-        ovs_to_ctrl_intf = ovs.addInterface()
-        ovs_to_ctrl_intf.addAddress(PG.IPv4Address("11.1.1.%d" % (4*i+1), CTRLMASK))
+        ovs = createOvsSwitch("ovs%d" % (i + 1), cmid, i)
         r.addResource(ovs)
 
         # Create interface for controller to switch
-        ctrl_to_ovs_intf = ctrl.addInterface()
-        ctrl_to_ovs_intf.addAddress(PG.IPv4Address("11.1.1.%d" % (4*i+2), CTRLMASK))
-        ctrl_link = PG.LAN()
-        ctrl_link.addInterface(ctrl_to_ovs_intf)
-        ctrl_link.addInterface(ovs_to_ctrl_intf)
-        ctrl_link.vlan_tagging = True
-        r.addResource(ctrl_link)
+        r.addResource(createCtrlLink(ctrl,ovs,i))
 
         # Create hosts and connect them to switch
         for ct in xrange(0,num_hosts):
-            vzc = IGX.XenVM("host%d%d" % (i+1,ct+1))
-            vzc.component_manager_id = cmid
-            vzc.addService(PG.Execute(shell="sh",
-                                      command ="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files"))
-            intfs = []
+            vzc = createHost("host%d%d" % (i+1,ct+1), cmid)
             for j in xrange(0,num_links):
-                hostaddr = "10.10.%d.%d" % (i,ct*num_links+j+1)
-                vzc.addService(PG.Execute(shell="sh",
-                                          command ="sudo bash /local/geni-install-files/install-iperf.sh %d %d" % (i,ct*num_links+j+1)))
-                intf = vzc.addInterface()
-                intf.addAddress(PG.IPv4Address(hostaddr, NETMASK))
-                intfs.append(intf)
-
+                r.addResource(createOvs2HostLink(ovs,vzc,i,ct*num_links+j+1))
             r.addResource(vzc)
-
-            for j in xrange(0,num_links):
-                link = PG.LAN()
-                link.addInterface(intfs[j])
-                link.addInterface(ovs_intfs[ct*num_links+j])
-                link.vlan_tagging = True
-                r.addResource(link)
         all_ovs.append(ovs)
 
     # Connect the switches in a single line
     for i in xrange(1,num_switches):
-        intf1 = all_ovs[i-1].addInterface()
-        intf1.addAddress(PG.IPv4Address("12.10.%d.%d" % (num_switches, 2*i+1), NETMASK))
-        intf2 = all_ovs[i].addInterface()
-        intf2.addAddress(PG.IPv4Address("12.10.%d.%d" % (num_switches, 2*i+2), NETMASK))
-        link = PG.LAN()
-        link.addInterface(intf1)
-        link.addInterface(intf2)
-        link.vlan_tagging = True
-        r.addResource(link)
+        r.addResource(createOvs2OvsLink(all_ovs[i-1], all_ovs[i], num_switches, i))
 
     r.writeXML("ovs-%s.rspec" % (site.name))
     #m = site.createsliver(context, SLICE, r)
