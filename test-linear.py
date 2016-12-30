@@ -30,9 +30,9 @@ def createRyuController(name, cmid):
 
 def createOvsSwitch(name, cmid, index):
     ovs = IGX.XenVM(name)
-    ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
+    #ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
     ovs.addService(PG.Execute(shell="sh",
-                              command="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh %d" % (4*index+2)))
+                              command="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/install-ovs-deps.sh %d" % (4*index+2)))
     ovs.component_manager_id = cmid
     return ovs
 
@@ -46,7 +46,7 @@ def createCtrlLink(ctrl, ovs, index):
     ctrl_link = PG.LAN()
     ctrl_link.addInterface(ctrl_to_ovs_intf)
     ctrl_link.addInterface(ovs_to_ctrl_intf)
-    ctrl_link.vlan_tagging = True
+    ctrl_link.vlan_tagging = False
     return ctrl_link
 
 def createHost (name, cmid):
@@ -68,7 +68,7 @@ def createOvs2HostLink(ovs, host, index, i):
     link = PG.LAN()
     link.addInterface(ovs_intf)
     link.addInterface(host_intf)
-    link.vlan_tagging = True
+    link.vlan_tagging = False
     return link
 
 def createOvs2OvsLink(ovs1, ovs2, subnet, index):
@@ -79,7 +79,7 @@ def createOvs2OvsLink(ovs1, ovs2, subnet, index):
     link = PG.LAN()
     link.addInterface(intf1)
     link.addInterface(intf2)
-    link.vlan_tagging = True
+    link.vlan_tagging = False
     return link
 
 for site in IG.aggregates():
@@ -106,9 +106,9 @@ for site in IG.aggregates():
     ctrl = createRyuController("ctrl", cmid)
     r.addResource(ctrl)
 
-    num_hosts = 1
-    num_links = 4
-    num_switches = 4
+    num_hosts = 2
+    num_links = 1
+    num_switches = 3
     all_ovs = []
     for i in xrange(0, num_switches):
         # Create the OVS switch
@@ -130,6 +130,6 @@ for site in IG.aggregates():
     for i in xrange(1,num_switches):
         r.addResource(createOvs2OvsLink(all_ovs[i-1], all_ovs[i], num_switches, i))
 
-    r.writeXML("ovs-%s.rspec" % (site.name))
+    r.writeXML("ovs-%s-linear.rspec" % (site.name))
     #m = site.createsliver(context, SLICE, r)
     #geni.util.printlogininfo(manifest=m)

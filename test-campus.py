@@ -253,6 +253,6 @@ for site in IG.aggregates():
     r.addResource(createOvs2OvsLink(ovs5, ovs3[1], subnet, 3))
     r.addResource(createOvs2OvsLink(ovs5, ovs4, subnet, 4))
 
-    r.writeXML("ovs-%s.rspec" % (site.name))
+    r.writeXML("ovs-%s-campus.rspec" % (site.name))
     #m = site.createsliver(context, SLICE, r)
     #geni.util.printlogininfo(manifest=m)
