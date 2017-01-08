@@ -32,11 +32,12 @@ def createRyuController(name, cmid):
     ctrl.component_manager_id = cmid
     return ctrl
 
+
 def createOvsSwitch(name, cmid, index):
     ovs = IGX.XenVM(name)
-    ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
+    #ovs.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU14-OVS2.31"
     ovs.addService(PG.Execute(shell="sh",
-                              command="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/create-ovs-br0.sh %d" % (4*index+2)))
+                              command="sudo git clone https://github.com/jaredivey/geni-install-files /local/geni-install-files ; sudo bash /local/geni-install-files/install-ovs-deps.sh %d" % (4*index+2)))
     ovs.component_manager_id = cmid
     return ovs
 
