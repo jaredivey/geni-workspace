@@ -108,7 +108,7 @@ for site in IG.aggregates():
 
     num_hosts = 2
     num_links = 1
-    num_switches = 3
+    num_switches = 4
     all_ovs = []
     for i in xrange(0, num_switches):
         # Create the OVS switch
