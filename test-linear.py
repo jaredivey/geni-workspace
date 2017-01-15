@@ -106,9 +106,9 @@ for site in IG.aggregates():
     ctrl = createRyuController("ctrl", cmid)
     r.addResource(ctrl)
 
-    num_hosts = 2
-    num_links = 1
-    num_switches = 3
+    num_hosts = 1
+    num_links = 8
+    num_switches = 8
     all_ovs = []
     for i in xrange(0, num_switches):
         # Create the OVS switch

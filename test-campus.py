@@ -19,7 +19,9 @@ context = localcontext.buildContext()
 SLICE = "python-geni-lib"
 CTRLMASK = "255.255.255.252"
 NETMASK = "255.255.0.0"
-WHITELIST = set([IG.UKYPKS2])
+GATECH = set([IG.UtahDDC])
+CLEMSON = set([IG.UtahDDC])
+UKYPKS2 = set([IG.UtahDDC])
 
 ovs_interfaces = 0
 ctrl_interfaces = 0
@@ -98,25 +100,22 @@ def createOvs2OvsLink(ovs1, ovs2, subnet, index):
     link.vlan_tagging = True
     return link
 
+r = PG.Request()
 for site in IG.aggregates():
-    if site not in WHITELIST:
+    if site not in GATECH:
         continue
 
     print site.name
-    #geni.util.deleteSliverExists(site, context, SLICE)
-
-    if argnum > 1 and args[1] == 'c':
-        break
+    geni.util.deleteSliverExists(site, context, SLICE)
 
     try:
         ad = site.listresources(context)
     except Exception:
         # Continue past aggregates that are down
+        print "%s might be down" % site.name
         continue
 
     cmid = ad.nodes[0].component_manager_id
-
-    r = PG.Request()
 
     # Create the controller
     ctrl = createRyuController("ctrl", cmid)
@@ -162,12 +161,28 @@ for site in IG.aggregates():
     # Create a link between subnets 0 and 1
     r.addResource(createOvs2OvsLink(ovs0[2], ovs1[0], subnet, 3))
 
+for site in IG.aggregates():
+    if site not in CLEMSON:
+        continue
+
+    print site.name
+    # geni.util.deleteSliverExists(site, context, SLICE)
+
+    try:
+        ad = site.listresources(context)
+    except Exception:
+        # Continue past aggregates that are down
+        print "%s might be down" % site.name
+        continue
+
+    cmid = ad.nodes[0].component_manager_id
+
     # Create subnet 2
     print "Creating subnet 2"
     subnet = 2
     ovs2 = []
     sn2_switches = 7
-    sn2_links = 1
+    sn2_links = 8
     for i in xrange(0,sn2_switches):
         ovs2.append(createOvsSwitch("ovs%d-%d" % (subnet, i), cmid, i))
         r.addResource(ovs2[i])
@@ -195,12 +210,28 @@ for site in IG.aggregates():
     r.addResource(createOvs2OvsLink(ovs2[3], ovs2[5], subnet, 6))
     r.addResource(createOvs2OvsLink(ovs2[5], ovs2[6], subnet, 7))
 
+for site in IG.aggregates():
+    if site not in UKYPKS2:
+        continue
+
+    print site.name
+    # geni.util.deleteSliverExists(site, context, SLICE)
+
+    try:
+        ad = site.listresources(context)
+    except Exception:
+        # Continue past aggregates that are down
+        print "%s might be down" % site.name
+        continue
+
+    cmid = ad.nodes[0].component_manager_id
+
     # Create subnet 3
     print "Creating subnet 3"
     subnet = 3
     ovs3 = []
     sn3_switches = 4
-    sn3_links = 1
+    sn3_links = 8
     for i in xrange(0,sn3_switches):
         ovs3.append(createOvsSwitch("ovs%d-%d" % (subnet, i), cmid, i))
         r.addResource(ovs3[i])
@@ -254,6 +285,6 @@ for site in IG.aggregates():
     r.addResource(createOvs2OvsLink(ovs5, ovs3[1], subnet, 3))
     r.addResource(createOvs2OvsLink(ovs5, ovs4, subnet, 4))
 
-    r.writeXML("ovs-%s-campus.rspec" % (site.name))
-    #m = site.createsliver(context, SLICE, r)
-    #geni.util.printlogininfo(manifest=m)
+r.writeXML("ovs-campus.rspec")
+#m = site.createsliver(context, SLICE, r)
+#geni.util.printlogininfo(manifest=m)
